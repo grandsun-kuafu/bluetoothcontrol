@@ -48,6 +48,10 @@ public class BleManager {
     private BluetoothAdapter bluetoothAdapter;
 
 
+    private String productId;
+    private String uid;
+
+
     private static final int DEFAULT_MAX_MULTIPLE_DEVICE = 7;
     private static final int DEFAULT_CONNECT_OVER_TIME = 10000;
     private static final int DEFAULT_CONNECT_RETRY_INTERVAL = 5000;
@@ -62,6 +66,15 @@ public class BleManager {
     private long reConnectInterval = DEFAULT_CONNECT_RETRY_INTERVAL;
     private int reConnectCount = DEFAULT_CONNECT_RETRY_COUNT;
     private int operateTimeout = DEFAULT_OPERATE_TIME;
+
+    public String getProductId() {
+        return productId;
+    }
+
+    public String getUid() {
+        return uid;
+    }
+
 
     private BleGattCallback bleGattCallback = new BleGattCallback() {
         @Override
@@ -104,9 +117,11 @@ public class BleManager {
      *
      * @param app
      */
-    public BleManager init(Activity app) {
+    public BleManager init(Activity app, String productId, String uid) {
         if (context == null && app != null) {
             context = app;
+            this.productId = productId;
+            this.uid = uid;
             if (isSupportBle()) {
                 bluetoothManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
             }
@@ -117,6 +132,11 @@ public class BleManager {
             registerBoradcastReceiver();
         }
         return this;
+    }
+
+    public void updateBleInfo(String productId, String uid) {
+        this.productId = productId;
+        this.uid = uid;
     }
 
     public BleManager autoConnect() {
@@ -251,7 +271,7 @@ public class BleManager {
         } else {
             BleBluetooth bleBluetooth = new BleBluetooth(bleDevice);
             bleBluetooth.connect(bleDevice, false, bleGattCallback);
-            bleController = new BleController(bleBluetooth);
+            bleController = new BleController( bleBluetooth);
 
             //开启定时任务3分钟获取一次，15分钟上传一次
             CommandTask.startReadTask();
@@ -398,8 +418,10 @@ public class BleManager {
 //    }
 
     public void disconnect() {
-        if (bleController != null)
+        if (bleController != null) {
             bleController.bleBluetooth.disconnect();
+            bleController = null;
+        }
     }
 
     //    public int getConnectState(BluetoothDevice bleDevice) {

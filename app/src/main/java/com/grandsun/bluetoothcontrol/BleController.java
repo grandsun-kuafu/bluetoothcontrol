@@ -27,7 +27,6 @@ public class BleController {
     BluetoothGattCharacteristic characteristic;
 
     BleBluetooth bleBluetooth;
-
     public BleController(BleBluetooth bleBluetooth) {
         this.bleBluetooth = bleBluetooth;
     }
@@ -85,7 +84,7 @@ public class BleController {
 
                         @Override
                         public void onNotifyFailure(BleException exception) {
-                            Log.d("BleController", "notify failure"+ exception.getDescription());
+                            Log.d("BleController", "notify failure" + exception.getDescription());
 
                             listener.onCommandFailure(exception);
                         }
@@ -95,7 +94,7 @@ public class BleController {
                         public void onCharacteristicChanged(byte[] data) {
                             //获取到正确数字立即停止
                             String st = HexUtil.formatHexString(data, true);
-                            Log.d("BleController", "notify result:"+ st);
+                            Log.d("BleController", "notify result:" + st);
                             listener.onCommandResult(st);
 //                            if (st.startsWith("06")) {
 //                                stopNotify(
