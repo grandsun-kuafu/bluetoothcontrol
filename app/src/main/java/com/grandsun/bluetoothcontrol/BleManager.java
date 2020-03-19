@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
@@ -19,6 +21,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
 import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
@@ -27,31 +30,39 @@ import androidx.core.content.ContextCompat;
 import com.grandsun.bluetoothcontrol.bluetooth.BleBluetooth;
 import com.grandsun.bluetoothcontrol.bluetooth.BleScanner;
 import com.grandsun.bluetoothcontrol.callback.BleGattCallback;
+import com.grandsun.bluetoothcontrol.callback.BleNotifyCallback;
 import com.grandsun.bluetoothcontrol.callback.BleScanCallback;
-import com.grandsun.bluetoothcontrol.command.CommandTask;
+import com.grandsun.bluetoothcontrol.cloud.CommandTask;
+import com.grandsun.bluetoothcontrol.cloud.ServiceConstants;
+import com.grandsun.bluetoothcontrol.command.Command;
 import com.grandsun.bluetoothcontrol.exception.BleException;
 import com.grandsun.bluetoothcontrol.exception.OtherException;
+import com.grandsun.bluetoothcontrol.listener.CommandListener;
 import com.grandsun.bluetoothcontrol.utils.BleLog;
+import com.grandsun.bluetoothcontrol.utils.HexUtil;
+import com.grandsun.bluetoothcontrol.utils.JsonCacheUtil;
+
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class BleManager {
 
     private Activity context;
 
-    private BleController bleController;
-
-    private BluetoothManager bluetoothManager;
-
     private BluetoothAdapter bluetoothAdapter;
-
 
     private String productId;
     private String uid;
 
-
+    private boolean connectedBleDevice = false;
     private static final int DEFAULT_MAX_MULTIPLE_DEVICE = 7;
     private static final int DEFAULT_CONNECT_OVER_TIME = 10000;
     private static final int DEFAULT_CONNECT_RETRY_INTERVAL = 5000;
@@ -75,6 +86,9 @@ public class BleManager {
         return uid;
     }
 
+    public boolean connectedBleDevice() {
+        return this.connectedBleDevice;
+    }
 
     private BleGattCallback bleGattCallback = new BleGattCallback() {
         @Override
@@ -98,10 +112,6 @@ public class BleManager {
         }
     };
 
-    public BleController getBleController() {
-        return bleController;
-    }
-
     private BleManager() {
     }
 
@@ -122,9 +132,6 @@ public class BleManager {
             context = app;
             this.productId = productId;
             this.uid = uid;
-            if (isSupportBle()) {
-                bluetoothManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
-            }
             bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
             checkPermissions();
 
@@ -142,7 +149,7 @@ public class BleManager {
     public BleManager autoConnect() {
 //        this.bleGattCallback = bleGattCallback;
         //看现在是否已经连上了经典蓝牙，而且ble蓝牙没连
-        if (bleController == null && isBTConnected()) {
+        if (!connectedBleDevice && isBTConnected()) {
             // 这时获取所有蓝牙设备的方法
             bluetoothAdapter.getProfileProxy(getContext(), new BluetoothProfile.ServiceListener() {
                 @Override
@@ -181,7 +188,7 @@ public class BleManager {
                                 //例子 hrm的mac为F4:0E:11:72:FC:54
                                 //    耳机经典蓝牙mac为F4:0E:11:72:03:AB
                                 if (address.startsWith(device.getAddress().substring(0, 7))) {
-                                    BleManager.getInstance().connect(device, bleGattCallback);
+                                    connect(device, bleGattCallback);
                                     break;
                                 }
                             }
@@ -251,7 +258,7 @@ public class BleManager {
         scan(needConnect, bleScanCallback);
     }
 
-    public BleController connect(BluetoothDevice bleDevice, BleGattCallback bleGattCallback) {
+    public synchronized void connect(BluetoothDevice bleDevice, BleGattCallback bleGattCallback) {
         if (bleGattCallback == null) {
             throw new IllegalArgumentException("BleGattCallback can not be Null!");
         }
@@ -259,7 +266,7 @@ public class BleManager {
         if (!isBlueEnable()) {
             BleLog.e("Bluetooth not enable!");
             bleGattCallback.onConnectFail(bleDevice, new OtherException("Bluetooth not enable!"));
-            return null;
+            return;
         }
 
         if (Looper.myLooper() == null || Looper.myLooper() != Looper.getMainLooper()) {
@@ -271,14 +278,13 @@ public class BleManager {
         } else {
             BleBluetooth bleBluetooth = new BleBluetooth(bleDevice);
             bleBluetooth.connect(bleDevice, false, bleGattCallback);
-            bleController = new BleController( bleBluetooth);
-
+            connectedBleDevice = true;
             //开启定时任务3分钟获取一次，15分钟上传一次
             CommandTask.startReadTask();
             CommandTask.startUpTask();
         }
 
-        return bleController;
+        return;
     }
 
 
@@ -418,10 +424,7 @@ public class BleManager {
 //    }
 
     public void disconnect() {
-        if (bleController != null) {
-            bleController.bleBluetooth.disconnect();
-            bleController = null;
-        }
+        bleBluetooth.disconnect();
     }
 
     //    public int getConnectState(BluetoothDevice bleDevice) {
@@ -433,6 +436,191 @@ public class BleManager {
 //    }
     public void cancelScan() {
         BleScanner.getInstance().stopLeScan();
+    }
+
+    BluetoothGattService service;
+
+    BluetoothGattCharacteristic characteristic;
+
+    BleBluetooth bleBluetooth;
+
+
+    public static boolean isOpenCommand;
+
+
+    private BluetoothGatt getBluetoothGatt() {
+        return bleBluetooth.getBluetoothGatt();
+    }
+
+
+    private BleBluetooth getBleBluetooth() {
+        return bleBluetooth;
+    }
+
+    public void openCommand(Command command, final CommandListener listener) {
+
+        if (bleBluetooth == null) {
+            return;
+        }
+
+        BluetoothGatt gatt = getBluetoothGatt();
+
+        for (BluetoothGattService servicesub : gatt.getServices()) {
+            if (command.getSERVICE_UUID().equals(servicesub.getUuid().toString())) {
+                service = servicesub;
+            }
+        }
+        if (null != service) {
+            for (BluetoothGattCharacteristic characteristicSub : service.getCharacteristics()) {
+                if (command.getCHARACTER_UUID().equals(characteristicSub.getUuid().toString())) {
+                    characteristic = characteristicSub;
+                }
+            }
+        }
+
+        if (service != null && characteristic != null) {
+            notify(
+                    characteristic.getService().getUuid().toString(),
+                    characteristic.getUuid().toString(),
+                    new BleNotifyCallback() {
+                        @Override
+                        public void onNotifySuccess() {
+                            isOpenCommand = true;
+                            Log.d("BleController", "notify success");
+
+                            listener.onCommandSuccess();
+                        }
+
+                        @Override
+                        public void onNotifyFailure(BleException exception) {
+                            Log.d("BleController", "notify failure" + exception.getDescription());
+
+                            listener.onCommandFailure(exception);
+                        }
+
+                        // 关闭到事情留给定时任务
+                        @Override
+                        public void onCharacteristicChanged(byte[] data) {
+                            //获取到正确数字立即停止
+                            String st = HexUtil.formatHexString(data, true);
+                            Log.d("BleController", "notify result:" + st);
+                            listener.onCommandResult(st);
+                        }
+                    }
+            );
+        } else {
+            //
+        }
+    }
+
+    public void closeCommand() {
+        Log.d("BleController", "close Command");
+
+        if (isOpenCommand) {
+            stopNotify(
+                    characteristic.getService().getUuid().toString(),
+                    characteristic.getUuid().toString());
+        }
+    }
+
+
+    public JSONObject getHistoryByCommand(final Command command) {
+        //从线上拉取，如果没有拉到，根据本地缓存的形成,暂时只有一个指令，不需要分
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .connectTimeout(5, TimeUnit.SECONDS)//设置连接超时时间
+                        .readTimeout(5, TimeUnit.SECONDS)//设置读取超时时间
+                        .build();
+                Request request = new Request.Builder()
+                        .url(ServiceConstants.historyUrl + "?productId=" + getProductId()
+                                + "&uid=" + getUid() + "&type=" + command.name())
+                        .build();
+                try (Response response = client.newCall(request).execute()) {
+//                    清空上传好了的平均数据
+                    JsonCacheUtil.writeJson(getContext(), response.body().string(), "history",false);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        t.start();
+        JSONObject jsonObject = null;
+        try {
+            //等待线程执行三秒
+            t.join(3000);
+            List<String> list = JsonCacheUtil.readJson(getContext(), "history");
+            if (list.size() >= 0) {
+                jsonObject = new JSONObject(list.get(0));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return jsonObject;
+    }
+
+    private void notify(
+            String uuid_service,
+            String uuid_notify,
+            BleNotifyCallback callback) {
+        notify(uuid_service, uuid_notify, false, callback);
+    }
+
+    private void notify(
+            String uuid_service,
+            String uuid_notify,
+            boolean useCharacteristicDescriptor,
+            BleNotifyCallback callback) {
+        if (callback == null) {
+            throw new IllegalArgumentException("BleNotifyCallback can not be Null!");
+        }
+        if (bleBluetooth == null) {
+            callback.onNotifyFailure(new OtherException("This device not connect!"));
+        } else {
+            bleBluetooth.newBleConnector()
+                    .withUUIDString(uuid_service, uuid_notify)
+                    .enableCharacteristicNotify(callback, uuid_notify, useCharacteristicDescriptor);
+        }
+    }
+
+    /**
+     * stop notify, remove callback
+     *
+     * @param
+     * @param uuid_service
+     * @param uuid_notify
+     * @return
+     */
+    private boolean stopNotify(
+            String uuid_service,
+            String uuid_notify) {
+        return stopNotify(uuid_service, uuid_notify, false);
+    }
+
+    /**
+     * stop notify, remove callback
+     *
+     * @param
+     * @param uuid_service
+     * @param uuid_notify
+     * @param useCharacteristicDescriptor
+     * @return
+     */
+    private boolean stopNotify(
+            String uuid_service,
+            String uuid_notify,
+            boolean useCharacteristicDescriptor) {
+        if (bleBluetooth == null) {
+            return false;
+        }
+        boolean success = bleBluetooth.newBleConnector()
+                .withUUIDString(uuid_service, uuid_notify)
+                .disableCharacteristicNotify(useCharacteristicDescriptor);
+        if (success) {
+            bleBluetooth.removeNotifyCallback(uuid_notify);
+        }
+        return success;
     }
 
 }

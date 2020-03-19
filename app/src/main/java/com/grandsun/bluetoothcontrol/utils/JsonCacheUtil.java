@@ -110,10 +110,12 @@ public class JsonCacheUtil {
         List<String> result = new ArrayList<String>();
         File des = new File(CacheRoot, fileName);
         try {
-            fis = new FileInputStream(des);
-            ois = new ObjectInputStream(fis);
-            while (fis.available() > 0)
-                result.add((String) ois.readObject());
+            if (des.exists()) {
+                fis = new FileInputStream(des);
+                ois = new ObjectInputStream(fis);
+                while (fis.available() > 0)
+                    result.add((String) ois.readObject());
+            }
 
         } catch (FileNotFoundException e) {
             // TODO Auto-generated catch block
