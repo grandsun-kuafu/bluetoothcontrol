@@ -8,7 +8,6 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
-import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -22,7 +21,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
-import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -147,7 +145,6 @@ public class BleManager {
     }
 
     public BleManager autoConnect() {
-//        this.bleGattCallback = bleGattCallback;
         //看现在是否已经连上了经典蓝牙，而且ble蓝牙没连
         if (!connectedBleDevice && isBTConnected()) {
             // 这时获取所有蓝牙设备的方法
@@ -315,7 +312,6 @@ public class BleManager {
     private void checkPermissions() {
         BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         if (!bluetoothAdapter.isEnabled()) {
-            Toast.makeText(context, "open bluetooth pls", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -539,7 +535,7 @@ public class BleManager {
                         .build();
                 try (Response response = client.newCall(request).execute()) {
 //                    清空上传好了的平均数据
-                    JsonCacheUtil.writeJson(getContext(), response.body().string(), "history",false);
+                    JsonCacheUtil.writeJson(getContext(), response.body().string(), "history", false);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
