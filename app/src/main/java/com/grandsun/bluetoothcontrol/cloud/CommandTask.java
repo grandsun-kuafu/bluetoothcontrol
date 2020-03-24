@@ -5,8 +5,8 @@ import android.util.Log;
 
 
 import com.grandsun.bluetoothcontrol.BleManager;
-import com.grandsun.bluetoothcontrol.cloud.ServiceConstants;
 import com.grandsun.bluetoothcontrol.command.Command;
+import com.grandsun.bluetoothcontrol.command.CommandResult;
 import com.grandsun.bluetoothcontrol.exception.BleException;
 import com.grandsun.bluetoothcontrol.listener.CommandListener;
 import com.grandsun.bluetoothcontrol.utils.JsonCacheUtil;
@@ -15,6 +15,8 @@ import com.grandsun.bluetoothcontrol.utils.PollingUtil;
 import org.json.JSONObject;
 
 import java.math.BigDecimal;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +42,7 @@ public class CommandTask {
 
     private static boolean haveCloseCommand;
 
-    public static void startReadTask() {
+    public synchronized static void startReadTask() {
         if (readTaskStarted) {
             return;
         }
@@ -50,13 +52,8 @@ public class CommandTask {
         runnableMap.put("readRunnable", new Runnable() {
             @Override
             public void run() {
-                Log.d("commandTask", "readRunnable begin");
-
-                if (!BleManager.getInstance().connectedBleDevice()) {
-                    return;
-                }
-                // 要做的事情
-                BleManager.getInstance().openCommand(Command.TEMPERATURE_AND_HEARTRATE,
+                Log.d("commandTask", Calendar.getInstance().getTime()+"readRunnable begin");
+                BleManager.getInstance().addTaskCommandListener(Command.TEMPERATURE_AND_HEARTRATE_TASK,
                         new CommandListener() {
                             @Override
                             public void onCommandSuccess() {
@@ -69,21 +66,11 @@ public class CommandTask {
                             }
 
                             @Override
-                            public void onCommandResult(String result) {
-                                JsonCacheUtil.writeJson(BleManager.getInstance().getContext(), result,
+                            public void onCommandResult(CommandResult result) {
+                                JsonCacheUtil.writeJson(BleManager.getInstance().getContext(), result.getResult(),
                                         "task_temperature_and_heartrate", true);
-                                if (!haveCloseCommand) {
-                                    haveCloseCommand = true;
-                                    // 5秒中后关闭
-                                    new Handler().postDelayed(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            Log.d("commandTask", "5 second close command");
-                                            BleManager.getInstance().closeCommand();
-                                            haveCloseCommand = false;
-                                        }
-                                    }, 5000);
-                                }
+                                Log.d("commandResult", result.getResult());
+                                closeCommand();
                             }
                         });
             }
@@ -92,7 +79,23 @@ public class CommandTask {
 
     }
 
-    public static void startUpTask() {
+    public static synchronized void closeCommand() {
+        if (!haveCloseCommand) {
+            haveCloseCommand = true;
+            // 5秒中后关闭
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    Log.d("commandTask", Calendar.getInstance().getTime() + "5 second close command");
+                    BleManager.getInstance().removeTaskCommandListener(
+                            Command.TEMPERATURE_AND_HEARTRATE_TASK);
+                    haveCloseCommand = false;
+                }
+            }, 5000);
+        }
+    }
+
+    public synchronized static void startUpTask() {
         if (upTaskStarted) {
             return;
         }
@@ -102,7 +105,7 @@ public class CommandTask {
         runnableMap.put("upRunnable", new Runnable() {
             @Override
             public void run() {
-                Log.d("commandTask", "upRunnable begin");
+                Log.d("commandTask", Calendar.getInstance().getTime()+"upRunnable begin");
                 up(buildUpObj());
             }
         });
@@ -120,38 +123,42 @@ public class CommandTask {
         try {
             int countTem = 0;
             int countHr = 0;
-            BigDecimal temperatureMax = BigDecimal.ZERO, temperatureMin = BigDecimal.ZERO,
-                    heartRateMax = BigDecimal.ZERO, heartRateMin = BigDecimal.ZERO,
+            BigDecimal temperatureMax = null, temperatureMin = null,
+                    heartRateMax = null, heartRateMin = null,
                     temperatureAvg = BigDecimal.ZERO, heartRateAvg = BigDecimal.ZERO;
 
             for (String s : list) {
-                if (s.startsWith("06")) {//计算心率，体温
-                    String[] subS = s.split(" ");
-                    BigDecimal hr = new BigDecimal(Long.parseLong(subS[1], 16));
-                    if (hr.compareTo(BigDecimal.ZERO) > 0) {
-                        heartRate = heartRate.add(hr);
-                        countHr++;
-                        heartRateMax = heartRateMax.compareTo(hr) > 0 ? heartRateMax : hr;
-                        heartRateMin = heartRateMin.compareTo(hr) < 0 ? heartRateMin : hr;
-                    }
-                    BigDecimal tem = new BigDecimal(Long.parseLong(subS[2] + subS[3], 16));
-                    if (tem.compareTo(BigDecimal.ZERO) > 0) {
-                        temperature = temperature.add(tem);
-                        countTem++;
-                        temperatureMax = temperatureMax.compareTo(tem) > 0 ? temperatureMax : tem;
-                        temperatureMin = temperatureMin.compareTo(tem) < 0 ? temperatureMin : tem;
-                    }
+//                if (s.startsWith("06")) {//计算心率，体温
+                String[] subS = s.split(" ");
+                BigDecimal hr = new BigDecimal(Long.parseLong(subS[1], 16));
+                if (hr.compareTo(BigDecimal.ZERO) > 0) {
+                    heartRate = heartRate.add(hr);
+                    countHr++;
+                    heartRateMax = heartRateMax == null ? hr : (heartRateMax.compareTo(hr) > 0 ? heartRateMax : hr);
+                    heartRateMin = heartRateMin == null ? hr : (heartRateMin.compareTo(hr) < 0 ? heartRateMin : hr);
                 }
+                BigDecimal tem = new BigDecimal(Long.parseLong(subS[2] + subS[3], 16));
+                if (tem.compareTo(BigDecimal.ZERO) > 0) {
+                    temperature = temperature.add(tem);
+                    countTem++;
+                    temperatureMax = temperatureMax == null ? tem : (temperatureMax.compareTo(tem) > 0 ? temperatureMax : tem);
+                    temperatureMin = temperatureMin == null ? tem : (temperatureMin.compareTo(tem) < 0 ? temperatureMin : tem);
+                }
+//                }
             }
             if (countTem > 0)
                 temperatureAvg = temperature.divide(new BigDecimal(countTem * 10), 1, BigDecimal.ROUND_HALF_UP);
             object.put("temperatureAvg", temperatureAvg);
             if (countHr > 0)
                 heartRateAvg = heartRate.divide(new BigDecimal(countHr), 0, BigDecimal.ROUND_HALF_UP);
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+            object.put("measureDate", dateFormat.format(Calendar.getInstance().getTime()));
             object.put("heartRateAvg", heartRateAvg);
 
-            object.put("temperatureMax", temperatureMax);
-            object.put("temperatureMin", temperatureMin);
+            object.put("temperatureMax", temperatureMax == null ? temperatureMax :
+                    temperatureMax.divide(new BigDecimal(10), 1, BigDecimal.ROUND_HALF_UP));
+            object.put("temperatureMin", temperatureMin == null ? temperatureMin :
+                    temperatureMin.divide(new BigDecimal(10), 1, BigDecimal.ROUND_HALF_UP));
             object.put("temperatureMaxW", BigDecimal.ZERO);
             object.put("temperatureMinW", BigDecimal.ZERO);
             object.put("heartRateMax", heartRateMax);
@@ -179,38 +186,44 @@ public class CommandTask {
                 "up_obj", true);
         List<String> listAvg = JsonCacheUtil.readJson(BleManager.getInstance().getContext(), "up_obj");
         try {
-            final StringBuilder avgHis = new StringBuilder("[");
-            for (int i = 0; i < listAvg.size(); i++) {
-                avgHis.append(listAvg.get(i));
-                if (i < listAvg.size() - 1) {
-                    avgHis.append(",");
+            for (int k = 0; k <= listAvg.size() / 10; k++) {            //最多上传十条
+                if (k * 10 == listAvg.size()) {
+                    break;
                 }
-            }
-            avgHis.append("]");
-            // Android 4.0 之后不能在主线程中请求HTTP请求
-            Thread t = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    OkHttpClient client = new OkHttpClient.Builder()
-                            .connectTimeout(5, TimeUnit.SECONDS)//设置连接超时时间
-                            .readTimeout(5, TimeUnit.SECONDS)//设置读取超时时间
-                            .build();
-                    RequestBody body = RequestBody.create(avgHis.toString(), JSON);
-                    Request request = new Request.Builder()
-                            .url(ServiceConstants.upUrl)
-                            .post(body)
-                            .build();
-                    try (Response response = client.newCall(request).execute()) {
-                        response.body().string();
-//                    清空上传好了的平均数据
-                        JsonCacheUtil.clear(BleManager.getInstance().getContext(), "up_obj");
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                int limit = listAvg.size() < (k + 1) * 10 ? listAvg.size() : (k + 1) * 10;
+                final StringBuilder avgHis = new StringBuilder("[");
+                for (int i = k * 10; i < limit; i++) {
+                    avgHis.append(listAvg.get(i));
+                    if (i < listAvg.size() - 1) {
+                        avgHis.append(",");
                     }
                 }
-            });
-            t.start();
-        } catch (Exception e) {
+                avgHis.append("]");
+                // Android 4.0 之后不能在主线程中请求HTTP请求
+                Thread t = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        OkHttpClient client = new OkHttpClient.Builder()
+                                .connectTimeout(5, TimeUnit.SECONDS)//设置连接超时时间
+                                .readTimeout(5, TimeUnit.SECONDS)//设置读取超时时间
+                                .build();
+                        RequestBody body = RequestBody.create(avgHis.toString(), JSON);
+                        Request request = new Request.Builder()
+                                .url(ServiceConstants.upUrl)
+                                .post(body)
+                                .build();
+                        try (Response response = client.newCall(request).execute()) {
+//                    清空上传好了的平均数据
+                            JsonCacheUtil.clear(BleManager.getInstance().getContext(), "up_obj");
+                        } catch (Exception e) {//忽略这个异常
+//                            e.printStackTrace();
+                        }
+                    }
+                });
+                t.start();
+            }
+        } catch (
+                Exception e) {
             e.printStackTrace();
         }
 

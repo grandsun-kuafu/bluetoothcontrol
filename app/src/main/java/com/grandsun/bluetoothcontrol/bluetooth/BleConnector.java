@@ -10,7 +10,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 
-import com.grandsun.bluetoothcontrol.BleManager;
 import com.grandsun.bluetoothcontrol.bluetooth.data.BleMsg;
 import com.grandsun.bluetoothcontrol.bluetooth.data.BleWriteState;
 import com.grandsun.bluetoothcontrol.callback.BleIndicateCallback;
@@ -32,6 +31,8 @@ public class BleConnector {
     private BluetoothGattCharacteristic mCharacteristic;
     private BleBluetooth mBleBluetooth;
     private Handler mHandler;
+
+    private static final int DEFAULT_OPERATE_TIME = 5000;
 
     BleConnector(BleBluetooth bleBluetooth) {
         this.mBleBluetooth = bleBluetooth;
@@ -495,7 +496,7 @@ public class BleConnector {
             mBleBluetooth.addNotifyCallback(uuid_notify, bleNotifyCallback);
             mHandler.sendMessageDelayed(
                     mHandler.obtainMessage(BleMsg.MSG_CHA_NOTIFY_START, bleNotifyCallback),
-                    BleManager.getInstance().getOperateTimeout());
+                    DEFAULT_OPERATE_TIME);
         }
     }
 
@@ -511,7 +512,7 @@ public class BleConnector {
             mBleBluetooth.addIndicateCallback(uuid_indicate, bleIndicateCallback);
             mHandler.sendMessageDelayed(
                     mHandler.obtainMessage(BleMsg.MSG_CHA_INDICATE_START, bleIndicateCallback),
-                    BleManager.getInstance().getOperateTimeout());
+                    DEFAULT_OPERATE_TIME);
         }
     }
 
@@ -527,7 +528,7 @@ public class BleConnector {
             mBleBluetooth.addWriteCallback(uuid_write, bleWriteCallback);
             mHandler.sendMessageDelayed(
                     mHandler.obtainMessage(BleMsg.MSG_CHA_WRITE_START, bleWriteCallback),
-                    BleManager.getInstance().getOperateTimeout());
+                    DEFAULT_OPERATE_TIME);
         }
     }
 
@@ -543,7 +544,7 @@ public class BleConnector {
             mBleBluetooth.addReadCallback(uuid_read, bleReadCallback);
             mHandler.sendMessageDelayed(
                     mHandler.obtainMessage(BleMsg.MSG_CHA_READ_START, bleReadCallback),
-                    BleManager.getInstance().getOperateTimeout());
+                    DEFAULT_OPERATE_TIME);
         }
     }
 
@@ -557,7 +558,7 @@ public class BleConnector {
             mBleBluetooth.addRssiCallback(bleRssiCallback);
             mHandler.sendMessageDelayed(
                     mHandler.obtainMessage(BleMsg.MSG_READ_RSSI_START, bleRssiCallback),
-                    BleManager.getInstance().getOperateTimeout());
+                    DEFAULT_OPERATE_TIME);
         }
     }
 
@@ -571,7 +572,7 @@ public class BleConnector {
             mBleBluetooth.addMtuChangedCallback(bleMtuChangedCallback);
             mHandler.sendMessageDelayed(
                     mHandler.obtainMessage(BleMsg.MSG_SET_MTU_START, bleMtuChangedCallback),
-                    BleManager.getInstance().getOperateTimeout());
+                    DEFAULT_OPERATE_TIME);
         }
     }
 

@@ -2,7 +2,6 @@ package com.grandsun.bluetoothcontrol.bluetooth.data;
 
 public class BleConnectStateParameter {
     private int status;
-    private boolean isActive;
 
 
     public BleConnectStateParameter(int status) {
@@ -17,11 +16,4 @@ public class BleConnectStateParameter {
         this.status = status;
     }
 
-    public boolean isActive() {
-        return isActive;
-    }
-
-    public void setActive(boolean active) {
-        isActive = active;
-    }
 }
