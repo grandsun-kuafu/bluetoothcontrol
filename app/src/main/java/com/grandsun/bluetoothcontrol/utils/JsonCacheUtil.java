@@ -1,6 +1,9 @@
 package com.grandsun.bluetoothcontrol.utils;
 
 
+import android.content.Context;
+import android.os.Environment;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -12,9 +15,6 @@ import java.io.StreamCorruptedException;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
-
-import android.content.Context;
-import android.os.Environment;
 
 public class JsonCacheUtil {
 
@@ -32,7 +32,6 @@ public class JsonCacheUtil {
             e.printStackTrace();
         }
     }
-
 
     /**
      * 存储Json文件
@@ -111,12 +110,10 @@ public class JsonCacheUtil {
         List<String> result = new ArrayList<String>();
         File des = new File(CacheRoot, fileName);
         try {
-            if (des.exists()) {
-                fis = new FileInputStream(des);
-                ois = new ObjectInputStream(fis);
-                while (fis.available() > 0)
-                    result.add((String) ois.readObject());
-            }
+            fis = new FileInputStream(des);
+            ois = new ObjectInputStream(fis);
+            while (fis.available() > 0)
+                result.add((String) ois.readObject());
 
         } catch (FileNotFoundException e) {
             // TODO Auto-generated catch block
